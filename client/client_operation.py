@@ -29,4 +29,4 @@ def usage():
 	"""
 
 def Unfinish():
-	print "This function has not been complete..."
+	print "This function has not been completed..."

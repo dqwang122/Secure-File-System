@@ -5,6 +5,7 @@ import SocketServer
 import os
 import threading, getopt, sys, string
 import json
+import pickle
 
 sys.path.insert(0, '../')
 
@@ -15,6 +16,7 @@ from Crypto import Random
 
 from error import *
 from server_operations import * 
+from server_helper import *
 
 # socket connection settings
 HOST = '127.0.0.1'	
@@ -30,12 +32,10 @@ RSA_KEY_SIZE = 2048
 SERVER_PK = None
 SERVER_PRK = None
 users = {}
-files = {}
-home_acls = {}
 
 # file system
 ROOT = "./_init_"
-SERVER_ROOT = os.path.join(os.environ['HOME'], 'SFS_server')
+HOUSE_ROOT = os.path.join(os.environ['HOME'], 'SFS_server')
 
 for op,value in opts:
 	if op in ("-l", "--list"):
@@ -54,6 +54,7 @@ def usage():
 	"""
 	
 def _InitServer():
+	global SERVER_PK,SERVER_PRK
 	SERVER_PRK = RSA.generate(RSA_KEY_SIZE)
 	SERVER_PK = SERVER_PRK.publickey()
 	f = open(os.path.join(ROOT, "server_pk.pem"), 'w')
@@ -62,9 +63,9 @@ def _InitServer():
 	f = open(os.path.join(ROOT, "server_prk.pem"), 'w')
 	f.write(SERVER_PRK.exportKey('PEM'))
 	f.close()
-	# TODO: Init the mysql
 
 def CheckInitSet():
+	global SERVER_PK,SERVER_PRK
 	PK_file = os.path.join(ROOT, "server_pk.pem")
 	PRK_file = os.path.join(ROOT, "server_prk.pem")
 	if not os.path.exists(PRK_file) or not os.path.exists(PK_file):
@@ -76,29 +77,59 @@ def CheckInitSet():
 		f = open(PRK_file)
 		SERVER_PRK = RSA.importKey(f.read())
 		f.close()	
-	# TODO: Connect to the mysql
 	
 	return True
 		
 def _GetUSERS():
-	# TODO
-	return True
-
-def _GETFILES():
-	# TODO
-	return True
-
-def _GETACLS():
-	# TODO
+	global users
+	userfile = os.path.join(ROOT, "users.list")
+	if os.path.exists(userfile):
+		f = open(userfile)
+		users = pickle.load(f)
+		f.close()
+	else:
+		users = {}
 	return True
 	
-def handle_request(argvs)：
+def _UpdateUSERS():
+	global users
+	userfile = os.path.join(ROOT, "users.list")
+	f = open(userfile, 'w')
+	pickle.dump(users, f)
+	f.close()
+	return True
+
+def _GETFILES(username):
+	files_load = os.path.join(ROOT, username + "_files.list")
+	if os.path.exists(files_load):
+		f.open(files_load)
+		files = pickle.load(f)
+		f.close()
+	else:
+		files = []
+	return True
+	
+def handle_request(argvs):
 	try:
-		cmd = argvs["cmd"]
-		if cmd == "register":
-			Unfinish()
-		elif cmd == "Login":
-			Unfinish()
+		data = argvs["data"]
+		username = argvs["username"]
+		cmd = data["cmd"]
+		if cmd == "checkuser":
+			password = data["password"]
+			repo = checkuser(users, username, password)
+			msg = json.dumps(repo)
+			return msg
+		elif cmd == "register":
+			password = data["password"]
+			if username in users.keys():
+				repo = {}
+				repo["status"] = 'False'
+				repo["data"] = Duplicate_ERR
+			else:
+				repo = register(users, username, password, data, SERVER_PK)
+				_UpdateUSERS()
+			msg = json.dumps(repo)
+			return msg
 		elif cmd == "cd":
 			Unfinish()
 		elif cmd == "pwd":
@@ -161,41 +192,36 @@ class MyHandle(SocketServer.BaseRequestHandler):
 			else:
 				type = int(type)
 				break;
-		if type == 1:
-			# packet: length + {}
-			packet_length = 0
-			# Get the length of packet
-			data = ""
-			while 1:
-				# TCP receive data by Bytes
-				data = self.request.recv(1)
-				if data is None or data == "" or data ==" ":
-					continue
-				elif data == "{":
-					break
-				else:
-					try:
+		if type == 1 or type == 2:
+			try:
+				# packet: length + {}
+				packet_length = 0
+				
+				# Get the length of packet
+				data = ""
+				while 1:
+					# TCP receive data by Bytes
+					data = self.request.recv(1)
+					if data is None or data == "" or data ==" ":
+						continue
+					elif data == "|":
+						break
+					else:
 						length_digit = int(data)
-					except:
-						return 0, 'error'
-					packet_length = (packet_length * 10) + length_digit
-					print packet_length
-			
-			# Get the full Packet
-			data = "{"
-			remaining_length = packet_length - len(data)
-			while remaining_length > 0:
-				buf = self.request.recv(min(remaining_length, MAXBUFF))
-				if buf is None or buf == "":
-					continue
-				data += buf
-				remaining_length = packet_length - len(data)
-				print remaining_length
-			
-			# recover json
-			argvs = json.loads(data)
-			print argvs
-			return type, argvs
+						packet_length = (packet_length * 10) + length_digit
+				
+				# Get the full Packet
+				data = ""
+				remaining_length = packet_length
+				while remaining_length > 0:
+					buf = self.request.recv(min(remaining_length, MAXBUFF))
+					if buf is None or buf == "":
+						continue
+					data += buf
+					remaining_length = packet_length - len(data)
+				return type, data
+			except:
+				return 0, 'argvs analysis error'
 		else:
 			buf = self.request.recv(MAXBUFF)
 			print "Test connection: ", buf
@@ -203,19 +229,25 @@ class MyHandle(SocketServer.BaseRequestHandler):
 			# self.request.sendall(buf.upper())
 			
 	def handle(self):
-		type, buf = self.receive()
+		type, data = self.receive()
 		if type == 1:
-			argvs = buf
-			response = json.dumps(handle_request(argvs))
+			ciphertxt = data
+			plaintxt = SERVER_PRK.decrypt(ciphertxt)
+			argvs = json.loads(plaintxt)
+			response = handle_request(argvs)
+			print plaintxt
+		elif type == 2:
+			plaintxt = data
+			argvs = json.loads(plaintxt)
+			response = handle_request(argvs)
+			print plaintxt
 		else:
-			response = buf.upper()
+			response = data.upper()
 		self.request.sendall(response)
 	
 if __name__ == '__main__':
 	if CheckInitSet() > 0:
-		# TODO:
-		# 	Get users, files, acls
-		# 	OR connect to the mysql
+		_GetUSERS()
 		print "Server is ready for connection"
 	else:
 		print "Waiting for  initialize..."
