@@ -7,16 +7,18 @@ import threading, getopt, sys, string
 import json
 import pickle
 
-sys.path.insert(0, '../')
+sys.path.append('../')
 
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA
 from Crypto import Random
+from Crypto.Cipher import PKCS1_v1_5 as Cipher_pkcs1_v1_5
 
 from error import *
 from server_operations import * 
 from server_helper import *
+import chunk_encrypt as c
 
 # socket connection settings
 HOST = '127.0.0.1'	
@@ -35,7 +37,7 @@ users = {}
 
 # file system
 ROOT = "./_init_"
-HOUSE_ROOT = os.path.join(os.environ['HOME'], 'SFS_server')
+HOUSE_DIRECTORY = os.path.join(os.environ['HOME'], 'SFS_server')
 
 for op,value in opts:
 	if op in ("-l", "--list"):
@@ -102,12 +104,13 @@ def _UpdateUSERS():
 def _GETFILES(username):
 	files_load = os.path.join(ROOT, username + "_files.list")
 	if os.path.exists(files_load):
-		f.open(files_load)
+		f = open(files_load)
 		files = pickle.load(f)
 		f.close()
 	else:
 		files = []
-	return True
+	return files
+
 	
 def handle_request(argvs):
 	try:
@@ -130,48 +133,62 @@ def handle_request(argvs):
 				_UpdateUSERS()
 			msg = json.dumps(repo)
 			return msg
+		elif cmd == "requirePK":
+			repo = givePK(SERVER_PK)
+			msg = json.dumps(repo)
+			return msg
 		elif cmd == "cd":
-			Unfinish()
-		elif cmd == "pwd":
-			# print current dir
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 		elif cmd == "ls":
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 			# ls -l 
 		elif cmd == "mkdir":
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 			# mkdir /temp/test
 		elif cmd == "touch":
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 			# create a new file
 		elif cmd == "rm":
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 			# rm [file]
 			# rm -r [dir]
 		elif cmd == "cp":
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 			# cp src dst(file/dir)
 			# cp -r srcdir dstdir
 		elif cmd == "chmod":
 			# set perm
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 		elif cmd == "mv":
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 			# mv src to dst
 		elif cmd == "read":
 			# download the file abd print it on the screen
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 		elif cmd == "write":
 			# download the file abd print it on the screen
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 		elif cmd == "upload":
 		# upload your file
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 		elif cmd == "download":
 			# download your file
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 		elif cmd == "share":
-			Unfinish()
+			user_pk =  users[username]["USER_PK"]
+			return Unfinish(user_pk)
 		else:
 			print "Unknown operations for file system."
 			print "Please check command! "
@@ -191,14 +208,13 @@ class MyHandle(SocketServer.BaseRequestHandler):
 				continue
 			else:
 				type = int(type)
-				break;
+				break
 		if type == 1 or type == 2:
 			try:
 				# packet: length + {}
 				packet_length = 0
 				
 				# Get the length of packet
-				data = ""
 				while 1:
 					# TCP receive data by Bytes
 					data = self.request.recv(1)
@@ -231,16 +247,18 @@ class MyHandle(SocketServer.BaseRequestHandler):
 	def handle(self):
 		type, data = self.receive()
 		if type == 1:
-			ciphertxt = data
-			plaintxt = SERVER_PRK.decrypt(ciphertxt)
+			ciphertxts = json.loads(data)
+			ciphertxt = ciphertxts["ciphertxt"]
+			plaintxt = c.decrypt(SERVER_PRK, ciphertxt)
+			print 'plaintxt', plaintxt
 			argvs = json.loads(plaintxt)
 			response = handle_request(argvs)
-			print plaintxt
+			print 'plaintxt', plaintxt
 		elif type == 2:
 			plaintxt = data
 			argvs = json.loads(plaintxt)
 			response = handle_request(argvs)
-			print plaintxt
+			print 'plaintxt', plaintxt
 		else:
 			response = data.upper()
 		self.request.sendall(response)

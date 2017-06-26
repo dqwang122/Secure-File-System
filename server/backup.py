@@ -62,7 +62,7 @@ if __name__ == '__main__':
 			message = raw_input("input: ")
 			s.sendall(message)
 			if not message or message == "q":
-				break;
+				break
 			print 'ServerOutput: ' + s.recv(MAXBUFF)
 		finally:
 			s.close()

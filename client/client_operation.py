@@ -1,5 +1,9 @@
 import os
 import sys
+import json
+from client_transmit import *
+from Crypto.PublicKey import RSA
+
 
 def usage():
 	print """
@@ -27,6 +31,23 @@ def usage():
     share -f -u [mode]		share with others
 
 	"""
+
+def RequireServerPK(Username, USER_ROOT, HOST, PORT):
+	msg = {}
+	msg['username'] = Username
+	msg['data'] = {'cmd': 'requirePK'}
+	plaintxt = json.dumps(msg)
+	repo = CheckFromServer(plaintxt, (HOST, PORT))
+	repo = json.loads(repo)
+	if repo['status'] == 'OK':
+		SERVER_PK = RSA.construct((long(repo['data']['SERVER_PK']['N']),
+								   long(repo['data']['SERVER_PK']['e'])))
+		skfile = os.path.join(USER_ROOT, "SERVER_PK.pem")
+		with open(skfile, 'w') as f:
+			f.write(SERVER_PK.exportKey('PEM'))
+		print "Require successfully!"
+	else:
+		return repo["data"]
 
 def Unfinish():
 	print "This function has not been completed..."

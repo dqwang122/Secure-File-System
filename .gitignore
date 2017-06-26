@@ -1,2 +1,6 @@
 #Python
 *.pyc
+
+#Pycharm
+client/.idea/
+server/.idea/

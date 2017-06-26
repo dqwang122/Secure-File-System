@@ -4,10 +4,11 @@ import base64
 import os
 import sys
 
-sys.path.insert(0, '../')
+sys.path.append('../')
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES
+from Crypto import Random
 
 from error import *
 from client_operation import *
@@ -21,10 +22,6 @@ HOME_DIRECTORY = os.path.join(os.environ['HOME'], 'SFS_local')
 RSA_KEY_SIZE = 2048
 SERVER_PK = None
 
-USER_ROOT = None
-USER_PRK = None
-USER_PK = None
-
 CURRENT_USER = None
 CURRENT_DIRECTORY = None
 CURRENT_DIRECTORY_SK = None
@@ -33,8 +30,7 @@ CURRENT_PATH = ""
 HOST = '127.0.0.1'	#localhost
 PORT = 8001
 
-def _generateUserKey(Username):
-	global USER_PRK, USER_PK
+def _generateUserKey(Username, USER_ROOT):
 	USER_PRK = RSA.generate(RSA_KEY_SIZE)
 	USER_PK = USER_PRK.publickey()
 	f = open(os.path.join(USER_ROOT, Username + "_PK.pem"), 'w')
@@ -47,6 +43,7 @@ def _generateUserKey(Username):
 	USER_ASEKEY = base64.b64encode(Random.new().read(32))
 	with open(keyfile, 'w') as f:
 		f.write(USER_ASEKEY)
+	return USER_PRK, USER_PK
 	
 # Connect to server to check user
 def AccountCheck(Username, Password):
@@ -78,11 +75,10 @@ def Register(Username, Password):
 	repo = CheckFromServer(plaintxt, (HOST, PORT))
 	repo = json.loads(repo)
 	if repo['status'] == 'False' and repo['data'] == USERNAME_ERR:
-		global USER_ROOT
 		USER_ROOT = os.path.join(HOME_DIRECTORY, Username)
 		if not os.path.exists(USER_ROOT):
 			os.makedirs(USER_ROOT)
-		_generateUserKey(Username)
+		USER_PRK, USER_PK = _generateUserKey(Username, USER_ROOT)
 		msg = {}
 		msg['username'] = Username
 		msg['data'] = {'cmd':'register', 'password':Password, 'USER_PK':{'N':USER_PK.n,'e':USER_PK.e}}
@@ -103,18 +99,45 @@ def Register(Username, Password):
 	return True
 
 def Login():
-	global Current_User
-	Current_User = User(Username) 
+	global CURRENT_USER, SERVER_PK
+	CURRENT_USER = User(Username)
+	skfile = os.path.join(CURRENT_USER.ROOT, "SERVER_PK.pem")
+	try:
+		with open(skfile) as f:
+			SERVER_PK = RSA.importKey(f.read())
+	except:
+		RequireServerPK(Username, CURRENT_USER.ROOT, HOST, PORT)
 	print "Hello! Welcome to Secure File System!"
 	print "You can enter 'help' to find what file operations this system supports."
 	return
 	
 def dispatch(cmd, argv):
-	if cmd == "cd":
-		Unfinish()
+	global CURRENT_USER, SERVER_PK
+	if cmd == "quit" or cmd == "q":
+		print "Bye"
+		exit()
+	elif cmd == "help" or cmd == "h":
+		usage()
+	elif cmd == "cd":
+		# Unfinish()
+		print argv,len(argv)
+		if len(argv) == 1:
+			data = {"cmd": cmd, "dstpath": argv}
+			plain_packet = CURRENT_USER.createRequest(data)
+			cipher_repo = TransmitToServer(plain_packet, (HOST, PORT), SERVER_PK)
+			plain_repo = CURRENT_USER.decryptRequest(cipher_repo)
+			print "plain_repo", plain_repo
+			repo = json.loads(plain_repo)
+			if repo["status"] == "OK":
+				CURRENT_USER.chRemoteDir(repo["data"]["curpath"])
+				print CURRENT_USER.getcurDir()
+			else:
+				print repo["data"]
+		else:
+			print "Too many argv for " + cmd
 	elif cmd == "pwd":
 		# print current dir
-		Unfinish()
+		print CURRENT_USER.getcurDir()
 	elif cmd == "ls":
 		Unfinish()
 		# ls -l 
@@ -156,7 +179,7 @@ def dispatch(cmd, argv):
 		print "Unknown operations for file system."
 		print "Please check command! "
 		usage()
-		return
+	return
 
 
 if __name__ == '__main__':
@@ -198,25 +221,17 @@ if __name__ == '__main__':
 			try:
 				user_input = raw_input(Username + ' > ')
 				if not user_input:
-					break;
+					break
 				if user_input.upper() == "Q":
 					print "Bye"
 					break
 				else:
 					cmd = user_input.split()[0]
-					
-					if cmd == "quit" or cmd == "q":
-						print "Bye"
-						break
-					elif cmd == "help" or cmd == "h":
-						usage()
-					elif len(user_input.split()) == 1:
-						print "Unsupported operation for file system."
-						print "Please check command: "
-						usage()
-					else:
+					try:
 						argv = user_input.split()[1:]
-						dispatch(cmd, argv)
+					except:
+						argv = None
+					dispatch(cmd, argv)
 			except (ValueError, KeyboardInterrupt) as e:
 				print e
 				continue

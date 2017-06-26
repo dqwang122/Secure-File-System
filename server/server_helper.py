@@ -9,7 +9,9 @@ class Inode:
 		self.username = username
 		self.filename = filename
 		self.perm = WRITE
+		self.sharebit = 0
 		self.share = {}
+		self.sharekey = None
 	def setperm(self, perm):
 		self.perm = perm
 	def setshareperm(self, sharename, perm):
