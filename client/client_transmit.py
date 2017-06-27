@@ -32,7 +32,7 @@ def TransmitToServer(plaintxt, (HOST, PORT),SERVER_PK):
 		s.connect((HOST,PORT))
 		type = 1	# cipher mode
 		# print 'plaintxt', plaintxt
-		print SERVER_PK
+		# print SERVER_PK
 		ciphertxt = c.encrypt(SERVER_PK, plaintxt)
 		ciphertxts = json.dumps({"ciphertxt":ciphertxt})
 		length = len(ciphertxts)

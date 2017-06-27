@@ -91,6 +91,7 @@ def _GetUSERS():
 		f.close()
 	else:
 		users = {}
+	print "Load users: ", users
 	return True
 	
 def _UpdateUSERS():
@@ -99,6 +100,7 @@ def _UpdateUSERS():
 	f = open(userfile, 'w')
 	pickle.dump(users, f)
 	f.close()
+	print "Updated users: ", users
 	return True
 
 def _GETFILES(username):
@@ -106,10 +108,28 @@ def _GETFILES(username):
 	if os.path.exists(files_load):
 		f = open(files_load)
 		files = pickle.load(f)
+		inodes = pickle.load(f)
 		f.close()
 	else:
-		files = []
-	return files
+		files = {username:{}}
+		root_node = Inode(username, username, DIR)
+		inodes = {}
+		inodes[username] = root_node
+	print "Load files:", files
+	print "Load inodes:",inodes
+	return files, inodes
+
+def _UpadteFILES(files, inodes, username):
+	files_load = os.path.join(ROOT, username + "_files.list")
+	f = open(files_load, 'w')
+	pickle.dump(files, f)
+	pickle.dump(inodes, f)
+	f.close()
+	print "Updated files:", files
+	print "Updated inodes:", inodes
+	return True
+
+
 
 	
 def handle_request(argvs):
@@ -139,61 +159,162 @@ def handle_request(argvs):
 			return msg
 		elif cmd == "cd":
 			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				return changeDir(files, inodes, user_pk, data['dstdir'], data['curdir'])
+			else:
+				return PacketERR(user_pk)
 		elif cmd == "ls":
 			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				return ListDir(files, inodes, user_pk, data['curdir'])
+			else:
+				return PacketERR(user_pk)
 			# ls -l 
 		elif cmd == "mkdir":
 			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			dstdir = data["dstdir"]
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				repo = createnewdir(files, inodes, dstdir, username, user_pk, curdir)
+				_UpadteFILES(files, inodes, username)
+				return repo
+			# return Unfinish(user_pk)
+			else:
+				return PacketERR(user_pk)
 			# mkdir /temp/test
 		elif cmd == "touch":
 			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			filename = data["filename"]
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes= _GETFILES(username)
+				repo = createnewfile(files, inodes, filename, username, user_pk, curdir)
+				_UpadteFILES(files, inodes, username)
+				return repo
+				# return Unfinish(user_pk)
+			else:
+				return PacketERR(user_pk)
+
 			# create a new file
 		elif cmd == "rm":
 			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				if 'filename' in data.keys():
+					filename = data["filename"]
+					repo = deletefile(files, inodes, filename, username, user_pk, curdir)
+				elif 'dstdir' in data.keys():
+					dstdir = data["dstdir"]
+					repo = deletedir(files, inodes, dstdir, username, user_pk, curdir)
+				else:
+					repo = Unfinish(user_pk)
+				_UpadteFILES(files, inodes, username)
+				return repo
+			# return Unfinish(user_pk)
+			else:
+				return PacketERR(user_pk)
+			# return Unfinish(user_pk)
 			# rm [file]
 			# rm -r [dir]
 		elif cmd == "cp":
 			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				if 'src' in data.keys():
+					dst = data["dst"]
+					src = data["src"]
+					repo = copyfile(files, inodes, dst, src, username, user_pk, curdir)
+					_UpadteFILES(files, inodes, username)
+					return repo
+				elif 'srcdir' in data.keys():
+					return Unfinish(user_pk)
+					# dstdir = data["dstdir"]
+					# srcdir = data["srcdir"]
+					# repo = copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir)
+			else:
+				return PacketERR(user_pk)
+			# return Unfinish(user_pk)
 			# cp src dst(file/dir)
 			# cp -r srcdir dstdir
 		elif cmd == "chmod":
 			# set perm
-			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			user_pk = users[username]["USER_PK"]
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				obj = data['obj']
+				perm = data['perm']
+				repo = SetObjPerm(files, inodes, obj, perm, username, user_pk, curdir)
+				_UpadteFILES(files, inodes, username)
+				return repo
+			else:
+				return PacketERR(user_pk)
+			# return Unfinish(user_pk)
 		elif cmd == "mv":
-			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			user_pk = users[username]["USER_PK"]
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				if 'src' in data.keys():
+					dst = data["dst"]
+					src = data["src"]
+					repo = movefile(files, inodes, dst, src, username, user_pk, curdir)
+					_UpadteFILES(files, inodes, username)
+					return repo
+				elif 'srcdir' in data.keys():
+					return Unfinish(user_pk)
+				# dstdir = data["dstdir"]
+				# srcdir = data["srcdir"]
+				# repo = copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir)
+			else:
+				return PacketERR(user_pk)
+			# return Unfinish(user_pk)
 			# mv src to dst
-		elif cmd == "read":
-			# download the file abd print it on the screen
-			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
-		elif cmd == "write":
-			# download the file abd print it on the screen
-			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
 		elif cmd == "upload":
-		# upload your file
+			# upload your file
 			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				dst = data["dst"]
+				filename = data["filename"]
+				content = data["content"]
+				repo = upLoad(files, inodes, dst, filename, content, username, user_pk, curdir)
+				_UpadteFILES(files, inodes, username)
+				return repo
+				# dstdir = data["dstdir"]
+				# srcdir = data["srcdir"]
+				# repo = copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir)
+			else:
+				return PacketERR(user_pk)
+			# return Unfinish(user_pk)
 		elif cmd == "download":
 			# download your file
-			user_pk =  users[username]["USER_PK"]
-			return Unfinish(user_pk)
+			user_pk = users[username]["USER_PK"]
+			curdir = data["curdir"]
+			if CheckSignature(user_pk, argvs["signature"], json.dumps(data)):
+				files, inodes = _GETFILES(username)
+				src = data["src"]
+				repo = DownLoad(files, inodes, src, username, user_pk, curdir)
+				# _UpadteFILES(files, inodes, username)
+				return repo
+			# dstdir = data["dstdir"]
+			# srcdir = data["srcdir"]
+			# repo = copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir)
+			else:
+				return PacketERR(user_pk)
+			# return Unfinish(user_pk)
 		elif cmd == "share":
 			user_pk =  users[username]["USER_PK"]
 			return Unfinish(user_pk)
 		else:
-			print "Unknown operations for file system."
-			print "Please check command! "
-			usage()
-			return
+			user_pk = users[username]["USER_PK"]
+			return Unfinish(user_pk)
 	except KeyError as ke:
 		print "Couldn't get excepted args."
 		print ke
@@ -253,7 +374,6 @@ class MyHandle(SocketServer.BaseRequestHandler):
 			print 'plaintxt', plaintxt
 			argvs = json.loads(plaintxt)
 			response = handle_request(argvs)
-			print 'plaintxt', plaintxt
 		elif type == 2:
 			plaintxt = data
 			argvs = json.loads(plaintxt)

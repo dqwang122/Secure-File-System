@@ -22,14 +22,14 @@ def encrypt(key, plaintext, pad=True):
 
 	ciphertexts = []
 
-	print "trying to encrypt:", plaintext
+	# print "trying to encrypt:", plaintext
 
 	if pad:
 		cipher = PKCS1_OAEP.new(key)
 		for start in xrange(0, len(plaintext), chunk_size(key)):
 			end = start + chunk_size(key)
 			chunk = plaintext[start:end]
-			print "chunk =", chunk.decode("utf-8")
+			# print "chunk =", chunk.decode("utf-8")
 			ciphertext = cipher.encrypt(chunk)
 			ciphertexts.append(base64.b64encode(ciphertext))
 	else:

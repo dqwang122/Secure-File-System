@@ -1,5 +1,6 @@
 #Python
 *.pyc
+*.txt
 
 #Pycharm
 client/.idea/

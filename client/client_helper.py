@@ -14,10 +14,11 @@ HOME_DIRECTORY = os.path.join(os.environ['HOME'], 'SFS_local')
 HOUSE_DIRECTORY = os.path.join(os.environ['HOME'], 'SFS_server')
 
 class User:
+	servername = 'SFS_server'
 	def __init__(self, Username):
 		self.name = Username
 		self.ROOT = os.path.join(HOME_DIRECTORY, Username)
-		self.REMOTE_ROOT = os.path.join('SFS_server', Username)
+		self.REMOTE_ROOT = Username
 		self.localpath = self.ROOT
 		self.remotepath = self.REMOTE_ROOT
 
@@ -37,9 +38,22 @@ class User:
 		except:
 			print "The User information is lost"
 
+	def getusername(self):
+		return self.name
+
 	def getcurDir(self):
-		servername = self.remotepath.split("/")[0]
-		return servername + ":" + "".join(self.remotepath.split("/")[1:])
+		servername = self.servername
+		return servername + ":" + self.remotepath
+
+	def getEncryptcurDir(self):
+		curpath = []
+		curDirs = self.remotepath.split("/")
+		for c in curDirs:
+			if c == self.name:
+				curpath.append(c)
+			else:
+				curpath.append(self.encryptAES(c))
+		return curpath
 
 	def chRemoteDir(self, path):
 		self.remotepath = path
@@ -65,7 +79,8 @@ class User:
 	def decryptAES(self, ciphertext):
 		def _unPad(s):
 			return s[:-ord(s[len(s) - 1:])]
-		return _unPad(self.cipher.decrypt(base64.b64decode(ciphertext)).decode('utf-8'))
+		# return _unPad(self.cipher.decrypt(base64.b64decode(ciphertext)).decode('utf-8'))
+		return _unPad(self.cipher.decrypt(base64.b64decode(ciphertext)))
 
 	def signatureData(self, data):
 		signer = Signature_pkcs1_v1_5.new(self.PRK)
