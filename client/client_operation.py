@@ -81,7 +81,10 @@ def Decryptfile(CURRENT_USER, dst, content, filename):
 	de_filename = _unPad(CURRENT_USER.cipher.decrypt(base64.b64decode(filename)))
 	# print 'de_filename', de_filename
 	# print "content", content
-	de_content = CURRENT_USER.decryptAES(content)
+	if content:
+		de_content = CURRENT_USER.decryptAES(content)
+	else:
+		de_content = content
 	# print 'de_content', de_content
 	full_path = os.path.join(dst,de_filename)
 	f = open(full_path, 'wb')

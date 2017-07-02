@@ -13,6 +13,7 @@ import copy
 
 import chunk_encrypt as c
 from server_helper import *
+from server_transmit import *
 
 FILETYPR = -1
 
@@ -35,15 +36,6 @@ def CheckSignature(USER_PK, signature, data):
 	digest = SHA.new()
 	digest.update(data)
 	return verifier.verify(digest, base64.b64decode(signature))
-
-
-def CreateStandardPacket(user_pk, msg):
-	print user_pk
-	ciphertxt = c.encrypt(user_pk, msg, False)
-	ciphertxts = json.dumps({"ciphertxt": ciphertxt})
-	length = len(ciphertxts)
-	packet = str(length) + '|' + ciphertxts
-	return packet
 
 def checkuser(users, username, password):
 	repo = {}
@@ -76,87 +68,6 @@ def givePK(SERVER_PK):
 	repo["data"]["SERVER_PK"] = {'N': SERVER_PK.n, 'e': SERVER_PK.e}
 	return repo
 
-
-def Unfinish(user_pk):
-	repo = {}
-	repo["status"] = "False"
-	repo["data"] = "This function has not been complete..."
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def PacketERR(user_pk):
-	print "The packet has been distroyed"
-	repo = {}
-	repo["status"] = 'False'
-	repo["data"] = "PACKET INCOMPLETED"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def NothingHappen(user_pk):
-	print "Nothing happens"
-	repo = {}
-	repo["status"] = 'False'
-	repo["data"] = "Nothing happens"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def Duplicated(user_pk):
-	print "The file has existed"
-	repo = {}
-	repo["status"] = 'False'
-	repo["data"] = "The file has existed!"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def Completed(user_pk):
-	print "Complete successfully"
-	repo = {}
-	repo["status"] = 'OK'
-	repo["data"] = "Success"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def PermsDenied(user_pk):
-	print "Permissions Denied"
-	repo = {}
-	repo["status"] = 'False'
-	repo["data"] = "You don't have access to this dir!"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def WrongPath(user_pk):
-	print "The file or directory does not exist!"
-	repo = {}
-	repo["status"] = 'False'
-	repo["data"] = "The file or directory does not exist!"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def DELETEDENIED(user_pk):
-	print "Using rm to delete file"
-	repo = {}
-	repo["status"] = 'False'
-	repo["data"] = "You are deleting a directory. If you must, you can try rm -r [dir]"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
-def OSError(user_pk):
-	print "OS operations error"
-	repo = {}
-	repo["status"] = 'False'
-	repo["data"] = "Something to do with OS operations"
-	msg = json.dumps(repo)
-	standard_packet = CreateStandardPacket(user_pk, msg)
-	return standard_packet
-
 def InsertIntoFile(files, filepath):
 	curdir = files
 	for dir in filepath[:-1]:
@@ -167,23 +78,24 @@ def InsertIntoFile(files, filepath):
 	return True
 
 def CopyIntoFile(files, srcfilename, dstpath):
+	print 'srcfilename:', srcfilename
+	print 'dstpath:', dstpath
 	curdir = files
 	for dir in dstpath[:-1]:
 		if dir not in curdir.keys():
 			return WRONG_PATH
 		curdir = curdir[dir]
-	# for dst as dir
+	# if dst as dir
 	if dstpath[-1] in curdir.keys() and curdir[dstpath[-1]] != FILETYPR :
 		curdir = curdir[dstpath[-1]]
-	print 'curdir', curdir
-	print 'srcfilename', srcfilename
-	curdir[srcfilename] = FILETYPR
-	print 'curdir', curdir
-	print 'files', files
-
+		curdir[srcfilename] = FILETYPR
+	else:
+		curdir[dstpath[-1]] = FILETYPR
 	return True
 
 def DirToDir(files, srcpath, dstpath):
+	print 'srcpath',srcpath
+	print 'dstpath', dstpath
 	curdir = files
 	for dir in dstpath[:-1]:
 		if dir not in curdir.keys():
@@ -191,11 +103,13 @@ def DirToDir(files, srcpath, dstpath):
 		curdir = curdir[dir]
 	if dstpath[-1] not in curdir.keys():
 		curdir[dstpath[-1]] = {}
+	else:
+		return WRONG_PATH
 	dstdir = curdir[dstpath[-1]]
 
 	srccurdir = files
 	for dir in srcpath:
-		if dir not in curdir.keys():
+		if dir not in srccurdir.keys():
 			return WRONG_PATH
 		srccurdir = srccurdir[dir]
 	for file in srccurdir.keys():
@@ -233,12 +147,11 @@ def CreateDirInto(files, filepath):
 		if dir not in curdir.keys():
 			return WRONG_PATH
 		curdir = curdir[dir]
-		print 'curdir:', curdir
 	curdir[filepath[-1]] = {}
 	return True
 
 
-def TravserDir(files, inodes, curpath, dstpath):
+def TravserDir(files, inodes, curpath, dstpath, PERM=READ):
 	curdir = files
 	# curpath and dstpath are []
 	travserpaths = []
@@ -260,7 +173,7 @@ def TravserDir(files, inodes, curpath, dstpath):
 			travserpaths.extend(dstpath[cnt:])
 	elif dstpath[0] == "~":
 		travserpaths.extend(curpath[0])
-		travserpaths.extend(dstpath)
+		travserpaths.extend(dstpath[1:])
 	else:
 		travserpaths.extend(curpath)
 		travserpaths.extend(dstpath)
@@ -270,15 +183,15 @@ def TravserDir(files, inodes, curpath, dstpath):
 	print "travserpaths: ", travserpaths
 
 	cnt = 0
-	for dir in travserpaths:
+	for dir in travserpaths: # each level
 		if dir not in curdir.keys():
 			return curdir, travserpaths, WRONG_PATH
 		else:
 			curpathstr = '/'.join(travserpaths[:cnt+1])
 			print 'curpathstr', curpathstr
-			if curpathstr not in inodes.keys():
+			if curpathstr not in inodes.keys(): # every level must be in the inodes
 				return curdir, travserpaths, WRONG_PATH
-			if not inodes[curpathstr].checkperm(READ):
+			if not inodes[curpathstr].checkperm(PERM):
 				return curdir, travserpaths, PERMISSION_DENIED
 			curdir = curdir[dir]
 
@@ -311,10 +224,10 @@ def ListDir(files, inodes, user_pk, curdir):
 
 	if curlist.keys():
 		curlistf = curlist.keys()
-		print curlistf
+		print 'curlistf:',curlistf
 		for file in curlistf:
 			total_path = os.path.join(curpathstr,file)
-			# print total_path
+			print 'total_path:',total_path
 			if total_path not in inodes.keys():
 				continue
 			if inodes[total_path].checkperm(READ):
@@ -327,16 +240,14 @@ def ListDir(files, inodes, user_pk, curdir):
 	standard_packet = CreateStandardPacket(user_pk, msg)
 	return standard_packet
 
-
 def createnewfile(files, inodes, filename, username, user_pk, curdir):
-	path = curdir
 	if len(filename) == 1:
 		if filename[0] == "." or filename[0] == '..':
 			return NothingHappen(user_pk)
 		else:
 			path = curdir
 	else:
-		_, path, status = TravserDir(files, inodes, curdir, filename[:-1])
+		_, path, status = TravserDir(files, inodes, curdir, filename[:-1], WRITE)
 		if status == PERMISSION_DENIED:
 			return  PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -348,6 +259,17 @@ def createnewfile(files, inodes, filename, username, user_pk, curdir):
 	abspath = os.path.join(HOUSE_DIRECTORY, filepath)
 	print 'abspath', abspath
 
+	# inode
+	NewInode = Inode(username, filename[-1])
+	if filepath not in inodes.keys():
+		inodes[filepath] = NewInode
+	print inodes
+
+	# files
+	path.append(filename[-1])
+	if InsertIntoFile(files, path) == WRONG_PATH:
+		return WrongPath(user_pk)
+		
 	fakedir = '/'.join(abspath.split('/')[:-1])
 	print 'fakedir', fakedir
 	if not os.path.exists(fakedir):
@@ -357,27 +279,16 @@ def createnewfile(files, inodes, filename, username, user_pk, curdir):
 	except:
 		return Duplicated(user_pk)
 
-	# inode files
-	NewInode = Inode(username, filename[-1])
-	if filepath not in inodes.keys():
-		inodes[filepath] = NewInode
-	print inodes
-
-	path.append(filename[-1])
-	if InsertIntoFile(files, path) == WRONG_PATH:
-		return WrongPath(user_pk)
-
 	return Completed(user_pk)
 
 def deletefile(files, inodes, filename, username, user_pk, curdir):
-	path = curdir
 	if len(filename) == 1:
 		if filename[0] == "." or filename[0] == '..':
 			return NothingHappen(user_pk)
 		else:
 			path = curdir
 	else:
-		_, path, status = TravserDir(files, inodes, curdir, filename[:-1])
+		_, path, status = TravserDir(files, inodes, curdir, filename[:-1], WRTIE)
 		if status == PERMISSION_DENIED:
 			return PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -389,20 +300,24 @@ def deletefile(files, inodes, filename, username, user_pk, curdir):
 	abspath = os.path.join(HOUSE_DIRECTORY, filepath)
 	print 'abspath', abspath
 
-	# inode files
-	if filepath not in inodes.keys():
-		WrongPath(user_pk)
-	else:
-		inodes.pop(filepath)
-	print inodes
-
+	# files
 	path.append(filename[-1])
 	check = DeleteFromFile(files, path)
 	if check == WRONG_PATH:
 		return WrongPath(user_pk)
 	elif check == DELETEDIR_ERROR:
 		return DELETEDENIED(user_pk)
+	
+	# inode
+	if filepath not in inodes.keys():
+		return WrongPath(user_pk)
+	elif not inodes[filepath].checkperm(WRITE):
+		return PermsDenied(user_pk)
+	else:
+		inodes.pop(filepath)
+	print inodes
 
+	# untrust file server
 	fakedir = '/'.join(abspath.split('/')[:-1])
 	print fakedir
 	if not os.path.exists(fakedir):
@@ -410,20 +325,19 @@ def deletefile(files, inodes, filename, username, user_pk, curdir):
 	try:
 		os.remove(abspath)
 	except:
-		return DELETEDENIED(user_pk)
+		return OSError(user_pk)
 
 	return Completed(user_pk)
 
 
 def createnewdir(files, inodes, dstdir, username, user_pk, curdir):
-	path = curdir
 	if len(dstdir) == 1:
 		if dstdir[0] == "." or dstdir[0] == '..':
 			return NothingHappen(user_pk)
 		else:
 			path = curdir
 	else:
-		_, path, status = TravserDir(files, inodes, curdir, dstdir[:-1])
+		_, path, status = TravserDir(files, inodes, curdir, dstdir[:-1],WRTIE)
 		if status == PERMISSION_DENIED:
 			return  PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -435,37 +349,35 @@ def createnewdir(files, inodes, dstdir, username, user_pk, curdir):
 	abspath = os.path.join(HOUSE_DIRECTORY, filepath)
 	print 'abspath', abspath
 
-	fakedir = '/'.join(abspath.split('/')[:-1])
-	print 'fakedir', fakedir
-	if not os.path.exists(fakedir):
-		os.makedirs(abspath)
-	# try:
-	# 	os.mknod(abspath)
-	# except:
-	# 	return Duplicated(user_pk)
-
-	# inode files
+	# inode
 	NewInode = Inode(username, dstdir[-1], DIR)
 	if filepath not in inodes.keys():
 		inodes[filepath] = NewInode
 	else:
 		return Duplicated(user_pk)
 	print inodes
-
+	
+	# files
 	path.append(dstdir[-1])
 	if CreateDirInto(files, path) == WRONG_PATH:
 		return WrongPath(user_pk)
+		
+	# untrust file server
+	fakedir = copy.copy(abspath)
+	print 'fakedir', fakedir
+	if not os.path.exists(fakedir):
+		os.makedirs(abspath)
+		
 	return Completed(user_pk)
 
 def deletedir(files, inodes, dstdir, username, user_pk, curdir):
-	path = curdir
 	if len(dstdir) == 1:
 		if dstdir[0] == "." or dstdir[0] == '..':
 			return NothingHappen(user_pk)
 		else:
 			path = curdir
 	else:
-		_, path, status = TravserDir(files, inodes, curdir, dstdir[:-1])
+		_, path, status = TravserDir(files, inodes, curdir, dstdir[:-1], WRITE)
 		if status == PERMISSION_DENIED:
 			return PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -477,24 +389,25 @@ def deletedir(files, inodes, dstdir, username, user_pk, curdir):
 	abspath = os.path.join(HOUSE_DIRECTORY, filepath)
 	print 'abspath', abspath
 
-	# inode files
-	dirpath = os.path.join(pathstr, dstdir[-1])
-	print 'dirpath: ', dirpath
-	if dirpath not in inodes.keys():
-		WrongPath(user_pk)
+	# inode 
+	if filepath not in inodes.keys():
+		return WrongPath(user_pk)
 	else:
-		inodes.pop(dirpath)
+		inodes.pop(filepath)
+
 	for file in inodes.keys():
-		if file.startswith(dirpath):
+		if file.startswith(filepath):
 			inodes.pop(file)
 	print inodes
 
+	# files
 	path.append(dstdir[-1])
 	check = DeleteFromDir(files, path)
 	if check == WRONG_PATH:
 		return WrongPath(user_pk)
 
-	fakedir = '/'.join(abspath.split('/')[:-1])
+	# untrust file server
+	fakedir = abspath
 	print 'fakedir', fakedir
 	try:
 		shutil.rmtree(abspath)
@@ -525,7 +438,7 @@ def copyfile(files, inodes, dst, src, username, user_pk, curdir):
 		else:
 			dstpath = curdir
 	else:
-		_, dstpath, status = TravserDir(files, inodes, curdir, dst[:-1])
+		_, dstpath, status = TravserDir(files, inodes, curdir, dst[:-1], WRITE)
 		if status == PERMISSION_DENIED:
 			return PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -540,41 +453,64 @@ def copyfile(files, inodes, dst, src, username, user_pk, curdir):
 
 	dstpathstr = "/".join(dstpath)
 	print 'dstdstpath: ', dstpathstr
-	if dst[-1] != '.' and dst[-1] != '..':
+	if dst[-1] != '..' and dst[-1] != '.':
 		dstfilepath = os.path.join(dstpathstr, dst[-1])
+		dstpath.append(dst[-1])
 	else:
 		dstfilepath = os.path.join(dstpathstr, '')
-	dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
-	print 'dstabspath', dstabspath
 
-	# inode files
-	if dst[-1] != '.' and dst[-1] != '..':
-		dstpath.append(dst[-1])
+	# NewInode = Inode(username, filename[-1])
+	# if filepath not in inodes.keys():
+		# inodes[filepath] = NewInode
+	# print inodes
+	
+	# inode
+	if srcfilepath not in inodes.keys():
+		return WrongPath(user_pk)
+	elif inodes[srcfilepath].type == DIR:
+		return COPYDENIED(user_pk)
+	
+	NewInode = copy.deepcopy(inodes[srcfilepath])
+	
+	if dstfilepath in inodes.keys() and inodes[dstfilepath].type == DIR:
+		# the dst is a dir
+		print 'Is a dir'
+		dstfilepath = os.path.join(dstfilepath, src[-1])
+		print 'totalpath:', dstfilepath
+		inodes[dstfilepath] = NewInode
+	else:
+		print 'Is a file'
+		NewInode.chfilename(dst[-1])
+		inodes[dstfilepath] = NewInode
 
-	try:
-		NewInode = copy.deepcopy(inodes[srcfilepath])
-
-		curdir = files
-		for dir in dstpath[:-1]:
-			if dir not in curdir.keys():
-				return WRONG_PATH
-			curdir = curdir[dir]
+		# curdir = files
+		# for dir in dstpath[:-1]:
+			# if dir not in curdir.keys():
+				# return WRONG_PATH
+			# curdir = curdir[dir]
 		# for dst as dir
-		if dstpath[-1] in curdir.keys() and curdir[dstpath[-1]] != FILETYPR:
-			dstfile = os.path.join(dstfilepath, src[-1])
-			inodes[dstfile] = NewInode
-		else:
-			inodes[dstfilepath] = NewInode
-	except:
-		WrongPath(user_pk)
+		# if dstpath[-1] in curdir.keys() and curdir[dstpath[-1]] != FILETYPR:
+			# dstfile = os.path.join(dstfilepath, src[-1])
+			# inodes[dstfile] = NewInode
+		# else:
+			# inodes[dstfilepath] = NewInode
+
 	print inodes
 
-	srcpath.append(src[-1])
+	# files
 	if CopyIntoFile(files, src[-1], dstpath) == WRONG_PATH:
 		return WrongPath(user_pk)
 
+	# untrust file server
 	if not os.path.exists(srcabspath):
-		WrongPath(user_pk)
+		return WrongPath(user_pk)
+		
+	dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+	print 'dstabspath', dstabspath
+	fakedir = '/'.join(dstabspath.split('/')[:-1])
+	print 'fakedir:', fakedir
+	if not os.path.exists(fakedir):
+		os.makedirs(fakedir)
 	try:
 		shutil.copy(srcabspath, dstabspath)
 	except:
@@ -599,9 +535,12 @@ def copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir):
 	print 'srcpath: ', srcpath
 
 	if len(dstdir) == 1:
-		return NothingHappen(user_pk)
+		if dstdir[0] == "." or dstdir[0] == '..':
+			return NothingHappen(user_pk)
+		else:
+			dstpath = curdir
 	else:
-		_, dstpath, status = TravserDir(files, inodes, curdir, dstdir[:-1])
+		_, dstpath, status = TravserDir(files, inodes, curdir, dstdir[:-1], WRITE)
 		if status == PERMISSION_DENIED:
 			return PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -619,25 +558,22 @@ def copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir):
 
 	dstpathstr = "/".join(dstpath)
 	print 'dstdstpath: ', dstpathstr
-	dstfilepath = os.path.join(dstpathstr, '')
+	dstfilepath = os.path.join(dstpathstr, dstdir[-1])
 	dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
 	print 'dstabspath', dstabspath
+	dstpath_copy = copy.copy(dstpath)
+	
 
-	if not os.path.exists(srcabspath):
-		WrongPath(user_pk)
-	if os.path.exists(dstabspath):
-		DELETEDENIED(user_pk)
-	try:
-		shutil.copytree(srcabspath, dstabspath)
-	except:
-		return OSError(user_pk)
+	# inode
+	if srcfilepath not in inodes.keys():
+		return WrongPath(user_pk)
+	if inodes[srcfilepath].type != DIR:
+		return COPYWrong(user_pk)
+	NewInode = copy.deepcopy(inodes[srcfilepath])
+	NewInode.filename = dstdir[-1]
+	print 'newfile:', NewInode.filename
+	inodes[dstfilepath] = copy.deepcopy(NewInode)
 
-	# inode files
-	try:
-		NewInode = copy.deepcopy(inodes[srcfilepath])
-		inodes[dstfilepath] = NewInode
-	except:
-		WrongPath(user_pk)
 	for file in inodes.keys():
 		if file.startswith(srcfilepath):
 			NewInode = copy.deepcopy(inodes[file])
@@ -645,10 +581,24 @@ def copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir):
 			inodes[newfile] = NewInode
 	print inodes
 
+	# files
 	if srcdir[-1] != '.' and srcdir[-1] != '..':
 		srcpath.append(srcdir[-1])
-	if DirToDir(files, srcpath, dstpath) == WRONG_PATH:
+		print 'srcpath out:', srcpath
+	dstpath_copy.append(dstdir[-1])
+	print 'dstpath out:', dstpath_copy
+	if DirToDir(files, srcpath, dstpath_copy) == WRONG_PATH:
 		return WrongPath(user_pk)
+		
+	print 'dstfilepath:', dstfilepath
+	inodes[dstfilepath].filename = dstdir[-1]
+	print 'newfilename:',inodes[dstfilepath].filename
+		
+	# untrusted file system
+	# try:
+	shutil.copytree(srcabspath, dstabspath)
+	# except:
+		# return OSError(user_pk)
 
 	return Completed(user_pk)
 
@@ -754,8 +704,8 @@ def SetObjPerm(files, inodes, obj, perm, username, user_pk, curdir):
 		return WrongPath(user_pk)
 
 	filenode = inodes[pathstr]
-	oldperm = copy.copy(filenode.getperm())
-	print 'oldperm:', filenode.getperm()
+	oldperm = copy.copy(filenode.perm)
+	print 'oldperm:', filenode.perm
 
 	intperm = 0
 	if perm.upper() == "R":
@@ -777,7 +727,7 @@ def SetObjPerm(files, inodes, obj, perm, username, user_pk, curdir):
 
 	filenode.setperm(intperm)
 
-	print 'Newperm:', filenode.getperm()
+	print 'Newperm:', filenode.perm
 
 	repo = {}
 	repo["status"] = 'OK'
@@ -807,8 +757,8 @@ def upLoad(files, inodes, dst, fn, content, username, user_pk, curdir):
 	print 'path', pathstr
 
 	try:
-		if inodes[pathstr].gettype() == FILE:
-			print "dst_type:", inodes[pathstr].gettype()
+		if inodes[pathstr].type == FILE:
+			print "dst_type:", inodes[pathstr].type
 			return WrongPath(user_pk)
 	except:
 		return WrongPath(user_pk)
@@ -862,8 +812,8 @@ def DownLoad(files, inodes, filename, username, user_pk, curdir):
 	filepath = os.path.join(pathstr, filename[-1])
 
 	try:
-		if inodes[filepath].gettype() != FILE:
-			print "dst_type:", inodes[pathstr].gettype()
+		if inodes[filepath].type != FILE:
+			print "dst_type:", inodes[pathstr].type
 			return WrongPath(user_pk)
 	except:
 		return WrongPath(user_pk)
@@ -873,7 +823,8 @@ def DownLoad(files, inodes, filename, username, user_pk, curdir):
 	print 'abspath', abspath
 
 	if not os.path.exists(abspath):
-		WrongPath(user_pk)
+		print 'fake path does not exist!'
+		return WrongPath(user_pk)
 	try:
 		f = open(abspath, 'r')
 		content = f.read()

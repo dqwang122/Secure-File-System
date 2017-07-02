@@ -227,8 +227,8 @@ def dispatch(cmd, argv):
 			else:
 				print repo["data"]
 		elif len(argv) == 3 and argv[0] == '-r':
-			srcdir, curdir = DealWithAddr(CURRENT_USER, argv[0])
-			dstdir, curdir = DealWithAddr(CURRENT_USER, argv[1])
+			srcdir, curdir = DealWithAddr(CURRENT_USER, argv[1])
+			dstdir, curdir = DealWithAddr(CURRENT_USER, argv[2])
 			data = {"cmd": cmd, "srcdir": srcdir, 'dstdir': dstdir, 'curdir': curdir}
 			repo = _GenerateCMD(data)
 			if repo["status"] == "OK":

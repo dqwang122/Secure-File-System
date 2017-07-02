@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.7
+import copy
 
 READ = 1
 WRITE = 2
@@ -17,12 +18,10 @@ class Inode:
 		self.share = {}
 		self.sharekey = None
 		self.type = type
+	def chfilename(self, filename):
+		self.filename = copy.deepcopy(filename)
 	def setperm(self, perm):
 		self.perm = perm
-	def getperm(self):
-		return self.perm
-	def gettype(self):
-		return self.type
 	def setshareperm(self, sharename, perm):
 		self.share[sharename] = perm
 	def checkperm(self, require):

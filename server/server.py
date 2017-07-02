@@ -232,10 +232,12 @@ def handle_request(argvs):
 					_UpadteFILES(files, inodes, username)
 					return repo
 				elif 'srcdir' in data.keys():
-					return Unfinish(user_pk)
-					# dstdir = data["dstdir"]
-					# srcdir = data["srcdir"]
-					# repo = copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir)
+					# return Unfinish(user_pk)
+					dstdir = data["dstdir"]
+					srcdir = data["srcdir"]
+					repo = copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir)
+					_UpadteFILES(files, inodes, username)
+					return repo
 			else:
 				return PacketERR(user_pk)
 			# return Unfinish(user_pk)
