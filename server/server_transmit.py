@@ -100,6 +100,15 @@ def COPYWrong(user_pk):
 	msg = json.dumps(repo)
 	standard_packet = CreateStandardPacket(user_pk, msg)
 	return standard_packet
+	
+def MOVEWrong(user_pk):
+	print "Using mv to move dir to file or move file to non-existent dir"
+	repo = {}
+	repo["status"] = 'False'
+	repo["data"] = "You are moving a dir to a file or moving file to non-existent dir. Please check your operation!"
+	msg = json.dumps(repo)
+	standard_packet = CreateStandardPacket(user_pk, msg)
+	return standard_packet
 
 def OSError(user_pk):
 	print "OS operations error"

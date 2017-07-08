@@ -148,9 +148,56 @@ def CreateDirInto(files, filepath):
 			return WRONG_PATH
 		curdir = curdir[dir]
 	curdir[filepath[-1]] = {}
+	return True	
+
+def Rename(files, srcpath, dstpath):
+	curdir = files
+	for dir in srcpath[:-1]:
+		if dir not in curdir.keys():
+			return WRONG_PATH
+		curdir = curdir[dir]
+	temp = curdir.pop(srcpath[-1])
+	curdir[dstpath[-1]] = temp
 	return True
 
+def MoveFile2Dir(files, srcpath, dstpath):
+	curdir = files
+	for dir in dstpath:
+		if dir not in curdir.keys():
+			return WRONG_PATH
+		curdir = curdir[dir]
+	curdir[srcpath[-1]] = FILETYPR
+	
+	srccurdir = files
+	for dir in srcpath[:-1]:
+		if dir not in srccurdir.keys():
+			return WRONG_PATH
+		srccurdir = srccurdir[dir]
+	srccurdir.pop(srcpath[-1])
+	
+	return True
 
+def MoveDir2Dir(files, srcpath, dstpath):
+	print 'srcpath',srcpath
+	print 'dstpath', dstpath
+	dstdir = files
+	for dir in dstpath:
+		if dir not in dstdir.keys():
+			return WRONG_PATH
+		dstdir = dstdir[dir]
+	dstdir[srcpath[-1]] = {}
+	dstdir = dstdir[srcpath[-1]]
+
+	srccurdir = files
+	for dir in srcpath:
+		if dir not in srccurdir.keys():
+			return WRONG_PATH
+		srccurdir = srccurdir[dir]
+	for file in srccurdir.keys():
+		dstdir[file] = FILETYPR
+		srccurdir.pop(file)
+	return True
+	
 def TravserDir(files, inodes, curpath, dstpath, PERM=READ):
 	curdir = files
 	# curpath and dstpath are []
@@ -288,7 +335,7 @@ def deletefile(files, inodes, filename, username, user_pk, curdir):
 		else:
 			path = curdir
 	else:
-		_, path, status = TravserDir(files, inodes, curdir, filename[:-1], WRTIE)
+		_, path, status = TravserDir(files, inodes, curdir, filename[:-1], WRITE)
 		if status == PERMISSION_DENIED:
 			return PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -337,7 +384,7 @@ def createnewdir(files, inodes, dstdir, username, user_pk, curdir):
 		else:
 			path = curdir
 	else:
-		_, path, status = TravserDir(files, inodes, curdir, dstdir[:-1],WRTIE)
+		_, path, status = TravserDir(files, inodes, curdir, dstdir[:-1],WRITE)
 		if status == PERMISSION_DENIED:
 			return  PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -450,6 +497,7 @@ def copyfile(files, inodes, dst, src, username, user_pk, curdir):
 	srcfilepath = os.path.join(srcpathstr, src[-1])
 	srcabspath = os.path.join(HOUSE_DIRECTORY, srcfilepath)
 	print 'srcabspath', srcabspath
+	srcpath_copy = copy.copy(srcpath)
 
 	dstpathstr = "/".join(dstpath)
 	print 'dstdstpath: ', dstpathstr
@@ -474,14 +522,16 @@ def copyfile(files, inodes, dst, src, username, user_pk, curdir):
 	
 	if dstfilepath in inodes.keys() and inodes[dstfilepath].type == DIR:
 		# the dst is a dir
-		print 'Is a dir'
+		print 'dst Is a dir'
 		dstfilepath = os.path.join(dstfilepath, src[-1])
 		print 'totalpath:', dstfilepath
 		inodes[dstfilepath] = NewInode
-	else:
-		print 'Is a file'
+	elif dstfilepath in inodes.keys() and inodes[dstfilepath].type == FILE:
+		print 'dst Is a file'
 		NewInode.chfilename(dst[-1])
 		inodes[dstfilepath] = NewInode
+	else:
+		return WrongPath(user_pk)
 
 		# curdir = files
 		# for dir in dstpath[:-1]:
@@ -505,16 +555,34 @@ def copyfile(files, inodes, dst, src, username, user_pk, curdir):
 	if not os.path.exists(srcabspath):
 		return WrongPath(user_pk)
 		
-	dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
-	print 'dstabspath', dstabspath
-	fakedir = '/'.join(dstabspath.split('/')[:-1])
-	print 'fakedir:', fakedir
-	if not os.path.exists(fakedir):
-		os.makedirs(fakedir)
-	try:
-		shutil.copy(srcabspath, dstabspath)
-	except:
-		return OSError(user_pk)
+	temp = src[-1].split('/')[0]
+	fakesrc = '/'.join(srcpath_copy)
+	fakesrc = '/'.join([fakesrc, temp])
+	fakeabspath = os.path.join(HOUSE_DIRECTORY, fakesrc)
+	print 'fakesrc:', fakesrc
+	print 'fakeabspath:', fakeabspath
+	
+	if os.path.isdir(fakeabspath):
+		print "copytree"
+		
+		dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+		print 'dstabspath', dstabspath
+		fakedir = '/'.join(dstabspath.split('/')[:-2])
+		print 'fakedir:', fakedir
+		if not os.path.exists(fakedir):
+			os.makedirs(fakedir)
+		
+		dstdir = '/'.join(dstabspath.split('/')[:-1])
+		shutil.copytree(fakeabspath, dstdir)
+	else:
+		print "copy"
+		dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+		print 'dstabspath', dstabspath
+		fakedir = '/'.join(dstabspath.split('/')[:-1])
+		print 'fakedir:', fakedir
+		if not os.path.exists(fakedir):
+			os.makedirs(fakedir)
+		shutil.copy(fakeabspath, dstabspath)
 
 	return Completed(user_pk)
 
@@ -575,7 +643,7 @@ def copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir):
 	inodes[dstfilepath] = copy.deepcopy(NewInode)
 
 	for file in inodes.keys():
-		if file.startswith(srcfilepath):
+		if file.startswith(srcfilepath) and len(file) != len(srcfilepath):
 			NewInode = copy.deepcopy(inodes[file])
 			newfile = file.replace(srcfilepath, dstfilepath)
 			inodes[newfile] = NewInode
@@ -596,6 +664,12 @@ def copydir(files, inodes, dstdir, srcdir, username, user_pk, curdir):
 		
 	# untrusted file system
 	# try:
+	dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+	print 'dstabspath', dstabspath
+	fakedir = '/'.join(dstabspath.split('/')[:-1])
+	print 'fakedir:', fakedir
+	if not os.path.exists(fakedir):
+		os.makedirs(fakedir)
 	shutil.copytree(srcabspath, dstabspath)
 	# except:
 		# return OSError(user_pk)
@@ -624,7 +698,7 @@ def movefile(files, inodes, dst, src, username, user_pk, curdir):
 		else:
 			dstpath = curdir
 	else:
-		_, dstpath, status = TravserDir(files, inodes, curdir, dst[:-1])
+		_, dstpath, status = TravserDir(files, inodes, curdir, dst[:-1], WRITE)
 		if status == PERMISSION_DENIED:
 			return PermsDenied(user_pk)
 		elif status == WRONG_PATH:
@@ -636,57 +710,125 @@ def movefile(files, inodes, dst, src, username, user_pk, curdir):
 	srcfilepath = os.path.join(srcpathstr, src[-1])
 	srcabspath = os.path.join(HOUSE_DIRECTORY, srcfilepath)
 	print 'srcabspath', srcabspath
-
-	tempsrcpath = copy.deepcopy(srcpath)
+	if not os.path.exists(srcabspath):
+		return WrongPath(user_pk)
+	srcpath_copy = copy.copy(srcpath)
 
 	dstpathstr = "/".join(dstpath)
 	print 'dstdstpath: ', dstpathstr
-	if dst[-1] != '.' and dst[-1] != '..':
+	if dst[-1] != '..' and dst[-1] != '.':
 		dstfilepath = os.path.join(dstpathstr, dst[-1])
+		dstpath.append(dst[-1])
 	else:
 		dstfilepath = os.path.join(dstpathstr, '')
-	dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
-	print 'dstabspath', dstabspath
-
-	if dst[-1] != '.' and dst[-1] != '..':
-		dstpath.append(dst[-1])
-
-	# inode files
-	try:
-		NewInode = inodes.pop(srcfilepath)
-
-		curdir = files
-		for dir in dstpath[:-1]:
-			if dir not in curdir.keys():
-				return WRONG_PATH
-			curdir = curdir[dir]
-		# for dst as dir
-		print 'try curdir:', curdir
-		print 'try dstpath[-1]', dstpath[-1]
-		if dstpath[-1] in curdir.keys() and curdir[dstpath[-1]] != FILETYPR:
-			dstfile = os.path.join(dstfilepath, src[-1])
-			print 'dstfile', dstfile
-			inodes[dstfile] = NewInode
-		else:
-			inodes[dstfilepath] = NewInode
-	except:
-		WrongPath(user_pk)
-
-	tempsrcpath.append(src[-1])
-	print "src[-1]", src[-1]
-	print "out tempsrcpath:", tempsrcpath
-	print 'outsrcpath:', srcpath
-	if CopyIntoFile(files, src[-1], dstpath) == WRONG_PATH:
+	
+	# inode
+	if srcfilepath not in inodes.keys():
 		return WrongPath(user_pk)
-
-	DeleteFromFile(files, tempsrcpath)
-
-	if not os.path.exists(srcabspath):
-		WrongPath(user_pk)
-	try:
-		shutil.move(srcabspath, dstabspath)
-	except:
-		return OSError(user_pk)
+	elif inodes[srcfilepath].type == DIR:
+		print "src is DIR"
+		if dstfilepath in inodes.keys() and inodes[dstfilepath].type == DIR:
+			print "mv dir to dir(including the src dir)"
+			for file in inodes.keys():
+				if file.startswith(srcfilepath):
+					NewInode = copy.deepcopy(inodes.pop(file))
+					print 'file:',file
+					totalpath = os.path.join(dstfilepath, src[-1])
+					if len(file) != len(srcfilepath):
+						totalpath = os.path.join(totalpath, file[len(srcfilepath)+1:])
+					print "totalpath:", totalpath
+					inodes[totalpath] = NewInode
+			# file operations
+			srcpath_copy.append(src[-1])
+			print 'srcpath_copy:', srcpath_copy
+			if MoveDir2Dir(files, srcpath_copy, dstpath) == WRONG_PATH:
+				return WrongPath(user_pk)
+			# untrust file server								
+			dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+			print 'dstabspath', dstabspath
+			fakedir = '/'.join(dstabspath.split('/')[:-1])
+			print 'fakedir:', fakedir
+			if not os.path.exists(fakedir):
+				os.makedirs(fakedir)
+			print 'srcabspath:',srcabspath
+			shutil.move(srcabspath, dstabspath)
+		elif dstfilepath in inodes.keys() and inodes[dstfilepath].type == FILE:
+			return MOVEWrong(user_pk)
+		else:
+			print "rename dir"
+			old = inodes.pop(srcfilepath)
+			old.chfilename(dst[-1])
+			inodes[dstfilepath] = old
+			for file in inodes.keys():
+				if file.startswith(srcfilepath):
+					NewInode = copy.deepcopy(inodes.pop(file))
+					newfile = file.replace(srcfilepath, dstfilepath)
+					inodes[newfile] = NewInode
+			# file operations
+			srcpath_copy.append(src[-1])
+			print 'srcpath_copy:', srcpath_copy
+			print 'dstpath', dstpath
+			if Rename(files, srcpath_copy, dstpath) == WRONG_PATH:
+				return WrongPath(user_pk)
+			# untrust file server				
+			dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+			print 'dstabspath', dstabspath
+			fakedir = '/'.join(dstabspath.split('/')[:-1])
+			print 'fakedir:', fakedir
+			if not os.path.exists(fakedir):
+				os.makedirs(fakedir)
+			print 'srcabspath:',srcabspath
+			shutil.move(srcabspath, dstabspath)
+	elif inodes[srcfilepath].type == FILE:
+		print "src is FILE"
+		if dstfilepath not in inodes.keys():
+			print "rename file"
+			old = inodes.pop(srcfilepath)
+			old.chfilename(dst[-1])
+			inodes[dstfilepath] = old
+			# file operations
+			srcpath_copy.append(src[-1])
+			print 'srcpath_copy:', srcpath_copy
+			print 'dstpath', dstpath
+			if Rename(files, srcpath_copy, dstpath) == WRONG_PATH:
+				return WrongPath(user_pk)
+			# untrust file server				
+			dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+			print 'dstabspath', dstabspath
+			fakedir = '/'.join(dstabspath.split('/')[:-1])
+			print 'fakedir:', fakedir
+			if not os.path.exists(fakedir):
+				os.makedirs(fakedir)
+			print 'srcabspath:',srcabspath
+			shutil.move(srcabspath, dstabspath)
+		elif dstfilepath in inodes.keys() and inodes[dstfilepath].type == DIR:
+			print "mv file to dir"
+			old = inodes.pop(srcfilepath)
+			NewInode = copy.deepcopy(old)
+			totalpath = os.path.join(dstfilepath, src[-1])
+			print 'totalpath:', totalpath
+			inodes[totalpath] = NewInode
+			# file operations
+			srcpath_copy.append(src[-1])
+			print 'srcpath_copy:', srcpath_copy
+			if MoveFile2Dir(files, srcpath_copy, dstpath) == WRONG_PATH:
+				return WrongPath(user_pk)
+			# untrust file server				
+			dstabspath = os.path.join(HOUSE_DIRECTORY, dstfilepath)
+			print 'dstabspath', dstabspath
+			fakedir = copy.copy(dstabspath)
+			print 'fakedir:', fakedir
+			if not os.path.exists(fakedir):
+				os.makedirs(fakedir)
+			
+			temp = src[-1].split('/')[0]
+			fakesrc = '/'.join(srcpath_copy[:-1])
+			fakesrc = '/'.join([fakesrc, temp])
+			fakeabspath = os.path.join(HOUSE_DIRECTORY, fakesrc)
+			print 'fakeabspath:', fakeabspath
+			shutil.move(fakeabspath, dstabspath)
+		else:
+			return MOVEWrong(user_pk)
 
 	return Completed(user_pk)
 
@@ -825,12 +967,10 @@ def DownLoad(files, inodes, filename, username, user_pk, curdir):
 	if not os.path.exists(abspath):
 		print 'fake path does not exist!'
 		return WrongPath(user_pk)
-	try:
-		f = open(abspath, 'r')
-		content = f.read()
-		f.close()
-	except:
-		return Duplicated(user_pk)
+
+	f = open(abspath, 'r')
+	content = f.read()
+	f.close()
 
 	repo = {}
 	repo["status"] = "OK"
